@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lunar Surface Route Optimizer</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0a0a0f;
+            color: #e0e0e8;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 1;
+        }
+
+        .top-bar {
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 56px;
+            background: linear-gradient(180deg, rgba(10,10,18,0.95) 0%, rgba(10,10,18,0.7) 100%);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            z-index: 100;
+            gap: 16px;
+        }
+
+        .top-bar .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .top-bar .logo svg {
+            width: 28px; height: 28px;
+        }
+
+        .top-bar .logo span {
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            background: linear-gradient(135deg, #a78bfa, #60a5fa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .top-bar .status {
+            margin-left: auto;
+            font-size: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            color: rgba(255,255,255,0.4);
+        }
+
+        .top-bar .status.loading {
+            color: #fbbf24;
+            animation: pulse-text 1.5s ease-in-out infinite;
+        }
+
+        .top-bar .status.ready { color: #34d399; }
+
+        @keyframes pulse-text {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        .panel {
+            position: absolute;
+            top: 72px;
+            right: 16px;
+            width: 320px;
+            background: rgba(15, 15, 25, 0.85);
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 16px;
+            z-index: 100;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: rgba(255,255,255,0.5);
+        }
+
+        .panel-body {
+            padding: 16px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .control-group label {
+            font-size: 11px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: rgba(255,255,255,0.4);
+        }
+
+        .point-display {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 10px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: rgba(255,255,255,0.7);
+            min-height: 42px;
+            transition: all 0.2s;
+        }
+
+        .point-display.active {
+            border-color: rgba(167, 139, 250, 0.4);
+            background: rgba(167, 139, 250, 0.05);
+        }
+
+        .point-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .point-dot.start { background: #34d399; box-shadow: 0 0 8px rgba(52,211,153,0.5); }
+        .point-dot.end { background: #f87171; box-shadow: 0 0 8px rgba(248,113,113,0.5); }
+
+        .slider-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .slider-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            color: #a78bfa;
+            font-weight: 500;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 4px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 2px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #a78bfa;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(167,139,250,0.4);
+            transition: transform 0.15s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 10px;
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #7c3aed, #3b82f6);
+            color: white;
+            box-shadow: 0 4px 15px rgba(124,58,237,0.3);
+        }
+
+        .btn-primary:hover {
+            box-shadow: 0 6px 25px rgba(124,58,237,0.5);
+            transform: translateY(-1px);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-secondary {
+            background: rgba(255,255,255,0.05);
+            color: rgba(255,255,255,0.6);
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.08);
+            color: rgba(255,255,255,0.8);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-group .btn {
+            flex: 1;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .stat-card {
+            padding: 12px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-card .stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 16px;
+            font-weight: 600;
+            color: #60a5fa;
+        }
+
+        .stat-card .stat-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: rgba(255,255,255,0.35);
+            margin-top: 4px;
+        }
+
+        .stat-card.highlight .stat-value {
+            background: linear-gradient(135deg, #a78bfa, #60a5fa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .mode-indicator {
+            position: absolute;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            padding: 10px 24px;
+            background: rgba(15,15,25,0.85);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 100px;
+            font-size: 13px;
+            font-weight: 500;
+            color: rgba(255,255,255,0.7);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .mode-indicator.visible {
+            opacity: 1;
+        }
+
+        .mode-indicator .pulse {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #34d399;
+            animation: pulse-dot 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(52,211,153,0.5); }
+            50% { box-shadow: 0 0 0 6px rgba(52,211,153,0); }
+        }
+
+        .elevation-panel {
+            position: absolute;
+            bottom: 16px;
+            left: 16px;
+            right: 352px;
+            height: 140px;
+            background: rgba(15, 15, 25, 0.85);
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 16px;
+            z-index: 100;
+            display: none;
+            overflow: hidden;
+        }
+
+        .elevation-panel.visible { display: block; }
+
+        .elevation-panel .panel-header {
+            padding: 10px 16px;
+            font-size: 11px;
+        }
+
+        #elevation-canvas {
+            width: 100%;
+            height: 100px;
+        }
+
+        .computing-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(4px);
+            z-index: 200;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .computing-overlay.visible { display: flex; }
+
+        .computing-spinner {
+            width: 48px; height: 48px;
+            border: 3px solid rgba(167,139,250,0.2);
+            border-top-color: #a78bfa;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .computing-text {
+            font-size: 14px;
+            color: rgba(255,255,255,0.7);
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .toggle {
+            position: relative;
+            width: 36px;
+            height: 20px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .toggle.active {
+            background: #7c3aed;
+        }
+
+        .toggle::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.2s;
+        }
+
+        .toggle.active::after {
+            transform: translateX(16px);
+        }
+
+        .checkbox-label {
+            font-size: 12px;
+            color: rgba(255,255,255,0.6);
+        }
+    </style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+
+<div class="top-bar">
+    <div class="logo">
+        <svg viewBox="0 0 28 28" fill="none">
+            <circle cx="14" cy="14" r="12" stroke="url(#grad1)" stroke-width="1.5" fill="none"/>
+            <circle cx="10" cy="11" r="2.5" fill="rgba(167,139,250,0.4)"/>
+            <circle cx="18" cy="16" r="1.8" fill="rgba(96,165,250,0.4)"/>
+            <circle cx="13" cy="18" r="1.5" fill="rgba(52,211,153,0.3)"/>
+            <defs>
+                <linearGradient id="grad1" x1="0" y1="0" x2="28" y2="28">
+                    <stop offset="0%" stop-color="#a78bfa"/>
+                    <stop offset="100%" stop-color="#60a5fa"/>
+                </linearGradient>
+            </defs>
+        </svg>
+        <span>LUNAR ROUTE OPTIMIZER</span>
+    </div>
+    <div id="status" class="status loading">LOADING TERRAIN...</div>
+</div>
+
+<div class="panel">
+    <div class="panel-header">Route Planning</div>
+    <div class="panel-body">
+        <div class="control-group">
+            <label>Start Point (click terrain)</label>
+            <div id="start-display" class="point-display active">
+                <div class="point-dot start"></div>
+                <span>Click on terrain to set</span>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>End Point</label>
+            <div id="end-display" class="point-display">
+                <div class="point-dot end"></div>
+                <span>Set start point first</span>
+            </div>
+        </div>
+
+        <div class="control-group slider-container">
+            <div class="slider-header">
+                <label>Max Slope</label>
+                <span id="slope-value" class="slider-value">30°</span>
+            </div>
+            <input type="range" id="slope-slider" min="5" max="60" value="30" step="1">
+        </div>
+
+        <div class="control-group slider-container">
+            <div class="slider-header">
+                <label>Slope Penalty</label>
+                <span id="penalty-value" class="slider-value">2.0x</span>
+            </div>
+            <input type="range" id="penalty-slider" min="0.5" max="5" value="2" step="0.1">
+        </div>
+
+        <div class="control-group">
+            <div class="checkbox-group">
+                <div id="wireframe-toggle" class="toggle" onclick="toggleWireframe()"></div>
+                <span class="checkbox-label">Wireframe overlay</span>
+            </div>
+        </div>
+
+        <div class="btn-group">
+            <button id="compute-btn" class="btn btn-primary" disabled onclick="computeRoute()">
+                Compute Route
+            </button>
+            <button class="btn btn-secondary" onclick="resetPoints()">Reset</button>
+        </div>
+
+        <div id="stats-section" style="display:none">
+            <div class="stats-grid">
+                <div class="stat-card highlight">
+                    <div id="stat-distance" class="stat-value">—</div>
+                    <div class="stat-label">Distance</div>
+                </div>
+                <div class="stat-card">
+                    <div id="stat-maxslope" class="stat-value">—</div>
+                    <div class="stat-label">Max Slope</div>
+                </div>
+                <div class="stat-card">
+                    <div id="stat-elevation" class="stat-value">—</div>
+                    <div class="stat-label">Elev Gain</div>
+                </div>
+                <div class="stat-card">
+                    <div id="stat-steps" class="stat-value">—</div>
+                    <div class="stat-label">Path Steps</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="mode-indicator" class="mode-indicator">
+    <div class="pulse"></div>
+    <span id="mode-text">Click to place start point</span>
+</div>
+
+<div id="elevation-panel" class="elevation-panel">
+    <div class="panel-header">Elevation Profile</div>
+    <canvas id="elevation-canvas"></canvas>
+</div>
+
+<div id="computing-overlay" class="computing-overlay">
+    <div class="computing-spinner"></div>
+    <div class="computing-text">Computing optimal route...</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<script>
+
+let scene, camera, renderer, controls;
+let terrainMesh, wireframeMesh;
+let heightmap = null;
+let gridWidth = 0, gridHeight = 0;
+let minZ = 0, maxZ = 0;
+
+let startPoint = null;   
+let endPoint = null;
+let selectingStart = true;
+
+let startMarker = null, endMarker = null;
+let pathLine = null;
+let pathGlow = null;
+
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+function init() {
+    
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x08080f);
+    scene.fog = new THREE.FogExp2(0x08080f, 0.0008);
+
+    camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 5000);
+    camera.position.set(500, 600, 700);
+    camera.lookAt(500, 0, 500);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
+    document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.minDistance = 50;
+    controls.maxDistance = 2000;
+    controls.target.set(500, 0, 500);
+    controls.maxPolarAngle = Math.PI / 2.1;
+
+    const ambientLight = new THREE.AmbientLight(0x334466, 0.4);
+    scene.add(ambientLight);
+
+    const sunLight = new THREE.DirectionalLight(0xfff5e6, 1.2);
+    sunLight.position.set(400, 500, -200);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.camera.left = -600;
+    sunLight.shadow.camera.right = 600;
+    sunLight.shadow.camera.top = 600;
+    sunLight.shadow.camera.bottom = -600;
+    scene.add(sunLight);
+
+    const fillLight = new THREE.DirectionalLight(0x6688cc, 0.3);
+    fillLight.position.set(-300, 200, 400);
+    scene.add(fillLight);
+
+    const rimLight = new THREE.DirectionalLight(0xaa88ff, 0.15);
+    rimLight.position.set(0, 100, -500);
+    scene.add(rimLight);
+
+    addStars();
+
+    const gridHelper = new THREE.GridHelper(1200, 24, 0x1a1a2e, 0x111122);
+    gridHelper.position.set(500, -20, 500);
+    scene.add(gridHelper);
+
+    renderer.domElement.addEventListener('click', onTerrainClick);
+    window.addEventListener('resize', onResize);
+
+    document.getElementById('slope-slider').addEventListener('input', (e) => {
+        document.getElementById('slope-value').textContent = e.target.value + '°';
+    });
+    document.getElementById('penalty-slider').addEventListener('input', (e) => {
+        document.getElementById('penalty-value').textContent = parseFloat(e.target.value).toFixed(1) + 'x';
+    });
+
+    animate();
+    loadHeightmap();
+}
+
+function addStars() {
+    const starsGeometry = new THREE.BufferGeometry();
+    const starPositions = [];
+    for (let i = 0; i < 3000; i++) {
+        const r = 1500 + Math.random() * 1500;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        starPositions.push(
+            r * Math.sin(phi) * Math.cos(theta),
+            r * Math.cos(phi),
+            r * Math.sin(phi) * Math.sin(theta)
+        );
+    }
+    starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
+    const starsMaterial = new THREE.PointsMaterial({
+        color: 0xffffff,
+        size: 1.5,
+        sizeAttenuation: true,
+        transparent: true,
+        opacity: 0.6
+    });
+    scene.add(new THREE.Points(starsGeometry, starsMaterial));
+}
+
+async function loadHeightmap() {
+    try {
+        const response = await fetch('../heightmap.bin');
+        const buffer = await response.arrayBuffer();
+        const view = new DataView(buffer);
+
+        gridWidth = view.getUint32(0, true);
+        gridHeight = view.getUint32(4, true);
+        minZ = view.getFloat32(8, true);
+        maxZ = view.getFloat32(12, true);
+
+        heightmap = new Float32Array(buffer, 16);
+
+        console.log(`Grid: ${gridWidth}x${gridHeight}, Z: ${minZ.toFixed(2)} to ${maxZ.toFixed(2)}`);
+
+        buildTerrain();
+        setStatus('ready', `TERRAIN LOADED — ${gridWidth}×${gridHeight}`);
+        showMode('Click to place start point');
+    } catch (err) {
+        setStatus('loading', 'ERROR: ' + err.message);
+        console.error(err);
+    }
+}
+
+function buildTerrain() {
+    
+    const step = 1;
+    const w = Math.floor(gridWidth / step);
+    const h = Math.floor(gridHeight / step);
+
+    const geometry = new THREE.BufferGeometry();
+    const vertices = new Float32Array(w * h * 3);
+    const colors = new Float32Array(w * h * 3);
+
+    const zRange = maxZ - minZ;
+
+    for (let iy = 0; iy < h; iy++) {
+        for (let ix = 0; ix < w; ix++) {
+            const idx = iy * w + ix;
+            const srcIdx = (iy * step) * gridWidth + (ix * step);
+            const z = heightmap[srcIdx];
+
+            vertices[idx * 3] = ix * step;      
+            vertices[idx * 3 + 1] = z * 3;      
+            vertices[idx * 3 + 2] = iy * step;  
+
+            const t = (z - minZ) / zRange;
+            const color = elevationColor(t);
+            colors[idx * 3] = color.r;
+            colors[idx * 3 + 1] = color.g;
+            colors[idx * 3 + 2] = color.b;
+        }
+    }
+
+    const indices = [];
+    for (let iy = 0; iy < h - 1; iy++) {
+        for (let ix = 0; ix < w - 1; ix++) {
+            const a = iy * w + ix;
+            const b = iy * w + (ix + 1);
+            const c = (iy + 1) * w + ix;
+            const d = (iy + 1) * w + (ix + 1);
+            indices.push(a, b, c);
+            indices.push(b, d, c);
+        }
+    }
+
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+
+    const material = new THREE.MeshPhongMaterial({
+        vertexColors: true,
+        shininess: 15,
+        specular: new THREE.Color(0x222233),
+        side: THREE.DoubleSide,
+        flatShading: false,
+    });
+
+    terrainMesh = new THREE.Mesh(geometry, material);
+    terrainMesh.receiveShadow = true;
+    terrainMesh.castShadow = true;
+    scene.add(terrainMesh);
+
+    const wireMat = new THREE.MeshBasicMaterial({
+        color: 0x4444ff,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.03,
+    });
+    wireframeMesh = new THREE.Mesh(geometry.clone(), wireMat);
+    wireframeMesh.visible = false;
+    scene.add(wireframeMesh);
+
+    controls.target.set(gridWidth / 2, 0, gridHeight / 2);
+    camera.position.set(gridWidth / 2, gridWidth * 0.6, gridHeight + gridWidth * 0.3);
+    controls.update();
+}
+
+function elevationColor(t) {
+    
+    const stops = [
+        { t: 0.0, r: 0.05, g: 0.06, b: 0.12 },  
+        { t: 0.15, r: 0.10, g: 0.12, b: 0.22 },   
+        { t: 0.3, r: 0.20, g: 0.22, b: 0.32 },   
+        { t: 0.45, r: 0.35, g: 0.34, b: 0.38 },   
+        { t: 0.6, r: 0.50, g: 0.48, b: 0.46 },   
+        { t: 0.75, r: 0.65, g: 0.60, b: 0.52 },   
+        { t: 0.88, r: 0.78, g: 0.70, b: 0.58 },   
+        { t: 1.0, r: 0.92, g: 0.85, b: 0.72 },   
+    ];
+
+    for (let i = 0; i < stops.length - 1; i++) {
+        if (t >= stops[i].t && t <= stops[i + 1].t) {
+            const f = (t - stops[i].t) / (stops[i + 1].t - stops[i].t);
+            return {
+                r: stops[i].r + (stops[i + 1].r - stops[i].r) * f,
+                g: stops[i].g + (stops[i + 1].g - stops[i].g) * f,
+                b: stops[i].b + (stops[i + 1].b - stops[i].b) * f,
+            };
+        }
+    }
+    return stops[stops.length - 1];
+}
+
+function onTerrainClick(event) {
+    if (!heightmap) return;
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObject(terrainMesh);
+
+    if (intersects.length > 0) {
+        const p = intersects[0].point;
+        const gx = Math.round(p.x);
+        const gy = Math.round(p.z); 
+
+        if (gx < 0 || gx >= gridWidth || gy < 0 || gy >= gridHeight) return;
+
+        const gz = heightmap[gy * gridWidth + gx];
+
+        if (selectingStart) {
+            startPoint = { x: gx, y: gy };
+            updatePointDisplay('start', gx, gy, gz);
+            placeMarker('start', gx, gz * 3, gy);
+            selectingStart = false;
+            showMode('Click to place end point');
+            document.getElementById('start-display').classList.remove('active');
+            document.getElementById('end-display').classList.add('active');
+        } else {
+            endPoint = { x: gx, y: gy };
+            updatePointDisplay('end', gx, gy, gz);
+            placeMarker('end', gx, gz * 3, gy);
+            selectingStart = true;
+            hideMode();
+            document.getElementById('end-display').classList.remove('active');
+            document.getElementById('compute-btn').disabled = false;
+        }
+    }
+}
+
+function updatePointDisplay(type, x, y, z) {
+    const el = document.getElementById(type + '-display');
+    const span = el.querySelector('span');
+    span.textContent = `(${x}, ${y}) Z: ${z.toFixed(2)}`;
+}
+
+function placeMarker(type, x, y, z) {
+    const color = type === 'start' ? 0x34d399 : 0xf87171;
+    const glowColor = type === 'start' ? 0x34d399 : 0xf87171;
+
+    if (type === 'start' && startMarker) { scene.remove(startMarker); }
+    if (type === 'end' && endMarker) { scene.remove(endMarker); }
+
+    const group = new THREE.Group();
+
+    const geo = new THREE.SphereGeometry(4, 16, 16);
+    const mat = new THREE.MeshPhongMaterial({
+        color: color,
+        emissive: color,
+        emissiveIntensity: 0.5,
+        shininess: 80,
+    });
+    const sphere = new THREE.Mesh(geo, mat);
+    sphere.position.set(0, 8, 0);
+    group.add(sphere);
+
+    const glowGeo = new THREE.SphereGeometry(7, 16, 16);
+    const glowMat = new THREE.MeshBasicMaterial({
+        color: glowColor,
+        transparent: true,
+        opacity: 0.15,
+    });
+    const glow = new THREE.Mesh(glowGeo, glowMat);
+    glow.position.set(0, 8, 0);
+    group.add(glow);
+
+    const lineGeo = new THREE.CylinderGeometry(0.5, 0.5, 8, 8);
+    const lineMat = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.6 });
+    const line = new THREE.Mesh(lineGeo, lineMat);
+    line.position.set(0, 4, 0);
+    group.add(line);
+
+    const ringGeo = new THREE.RingGeometry(3, 5, 32);
+    const ringMat = new THREE.MeshBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.3,
+        side: THREE.DoubleSide,
+    });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(0, 0.5, 0);
+    group.add(ring);
+
+    group.position.set(x, y, z);
+
+    scene.add(group);
+
+    if (type === 'start') startMarker = group;
+    else endMarker = group;
+}
+
+function computeRoute() {
+    if (!startPoint || !endPoint) return;
+
+    const overlay = document.getElementById('computing-overlay');
+    overlay.classList.add('visible');
+
+    setTimeout(() => {
+        const maxSlopeDeg = parseFloat(document.getElementById('slope-slider').value);
+        const slopePenalty = parseFloat(document.getElementById('penalty-slider').value);
+        const result = astar(startPoint, endPoint, maxSlopeDeg, slopePenalty);
+
+        overlay.classList.remove('visible');
+
+        if (result) {
+            drawPath(result.path);
+            showStats(result);
+            drawElevationProfile(result.path);
+        } else {
+            alert('No path found! Try increasing the max slope or choosing closer points.');
+        }
+    }, 50);
+}
+
+function astar(start, end, maxSlopeDeg, slopePenalty) {
+    const maxSlopeRad = maxSlopeDeg * Math.PI / 180;
+    const maxSlopeTan = Math.tan(maxSlopeRad);
+    const W = gridWidth;
+    const H = gridHeight;
+
+    const dirs = [
+        { dx: 1, dy: 0, dist: 1 },
+        { dx: -1, dy: 0, dist: 1 },
+        { dx: 0, dy: 1, dist: 1 },
+        { dx: 0, dy: -1, dist: 1 },
+        { dx: 1, dy: 1, dist: Math.SQRT2 },
+        { dx: -1, dy: 1, dist: Math.SQRT2 },
+        { dx: 1, dy: -1, dist: Math.SQRT2 },
+        { dx: -1, dy: -1, dist: Math.SQRT2 },
+    ];
+
+    const idx = (x, y) => y * W + x;
+
+    const gScore = new Float32Array(W * H).fill(Infinity);
+    const cameFrom = new Int32Array(W * H).fill(-1);
+    const closed = new Uint8Array(W * H);
+
+    class MinHeap {
+        constructor() { this.data = []; }
+
+        push(node) {
+            this.data.push(node);
+            this._bubbleUp(this.data.length - 1);
+        }
+
+        pop() {
+            const top = this.data[0];
+            const last = this.data.pop();
+            if (this.data.length > 0) {
+                this.data[0] = last;
+                this._sinkDown(0);
+            }
+            return top;
+        }
+
+        get size() { return this.data.length; }
+
+        _bubbleUp(i) {
+            while (i > 0) {
+                const parent = (i - 1) >> 1;
+                if (this.data[i].f < this.data[parent].f) {
+                    [this.data[i], this.data[parent]] = [this.data[parent], this.data[i]];
+                    i = parent;
+                } else break;
+            }
+        }
+
+        _sinkDown(i) {
+            const n = this.data.length;
+            while (true) {
+                let smallest = i;
+                const l = 2 * i + 1, r = 2 * i + 2;
+                if (l < n && this.data[l].f < this.data[smallest].f) smallest = l;
+                if (r < n && this.data[r].f < this.data[smallest].f) smallest = r;
+                if (smallest !== i) {
+                    [this.data[i], this.data[smallest]] = [this.data[smallest], this.data[i]];
+                    i = smallest;
+                } else break;
+            }
+        }
+    }
+
+    function heuristic(x, y) {
+        const dx = end.x - x;
+        const dy = end.y - y;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    const startIdx = idx(start.x, start.y);
+    const endIdx = idx(end.x, end.y);
+
+    gScore[startIdx] = 0;
+
+    const openSet = new MinHeap();
+    openSet.push({ idx: startIdx, x: start.x, y: start.y, f: heuristic(start.x, start.y) });
+
+    let iterations = 0;
+    const maxIterations = W * H * 2;
+
+    while (openSet.size > 0 && iterations < maxIterations) {
+        iterations++;
+        const current = openSet.pop();
+
+        if (current.idx === endIdx) {
+            
+            const path = [];
+            let ci = endIdx;
+            while (ci !== -1) {
+                const cy = Math.floor(ci / W);
+                const cx = ci % W;
+                const cz = heightmap[ci];
+                path.unshift({ x: cx, y: cy, z: cz });
+                ci = cameFrom[ci];
+            }
+
+            let totalDist = 0;
+            let maxSlope = 0;
+            let elevGain = 0;
+
+            for (let i = 1; i < path.length; i++) {
+                const dx = path[i].x - path[i-1].x;
+                const dy = path[i].y - path[i-1].y;
+                const dz = path[i].z - path[i-1].z;
+                const hDist = Math.sqrt(dx*dx + dy*dy);
+                totalDist += Math.sqrt(hDist*hDist + dz*dz);
+                const slope = Math.abs(Math.atan2(Math.abs(dz), hDist)) * 180 / Math.PI;
+                if (slope > maxSlope) maxSlope = slope;
+                if (dz > 0) elevGain += dz;
+            }
+
+            return {
+                path,
+                distance: totalDist,
+                maxSlope,
+                elevGain,
+                steps: path.length,
+                iterations
+            };
+        }
+
+        if (closed[current.idx]) continue;
+        closed[current.idx] = 1;
+
+        const cx = current.x;
+        const cy = current.y;
+        const cz = heightmap[current.idx];
+        const cg = gScore[current.idx];
+
+        for (const dir of dirs) {
+            const nx = cx + dir.dx;
+            const ny = cy + dir.dy;
+
+            if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
+
+            const ni = idx(nx, ny);
+            if (closed[ni]) continue;
+
+            const nz = heightmap[ni];
+            const dz = nz - cz;
+            const hDist = dir.dist;  
+            const slope = Math.abs(dz) / hDist;
+
+            if (slope > maxSlopeTan) continue;
+
+            const dist3d = Math.sqrt(hDist * hDist + dz * dz);
+            const slopeFactor = slope / maxSlopeTan; 
+            const cost = dist3d * (1 + slopePenalty * slopeFactor * slopeFactor);
+
+            const ng = cg + cost;
+
+            if (ng < gScore[ni]) {
+                gScore[ni] = ng;
+                cameFrom[ni] = current.idx;
+                const f = ng + heuristic(nx, ny);
+                openSet.push({ idx: ni, x: nx, y: ny, f: f });
+            }
+        }
+    }
+
+    return null; 
+}
+
+function drawPath(path) {
+    
+    if (pathLine) { scene.remove(pathLine); pathLine = null; }
+    if (pathGlow) { scene.remove(pathGlow); pathGlow = null; }
+
+    const points = path.map(p => new THREE.Vector3(p.x, p.z * 3 + 1.5, p.y));
+
+    const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal', 0.2);
+    const curvePoints = curve.getPoints(path.length * 2);
+
+    const lineGeo = new THREE.BufferGeometry().setFromPoints(curvePoints);
+    const lineMat = new THREE.LineBasicMaterial({
+        color: 0xa78bfa,
+        linewidth: 2,
+    });
+    pathLine = new THREE.Line(lineGeo, lineMat);
+    scene.add(pathLine);
+
+    const tubeGeo = new THREE.TubeGeometry(curve, path.length, 1.5, 6, false);
+    const tubeMat = new THREE.MeshBasicMaterial({
+        color: 0x7c3aed,
+        transparent: true,
+        opacity: 0.35,
+    });
+    pathGlow = new THREE.Mesh(tubeGeo, tubeMat);
+    scene.add(pathGlow);
+
+    addPathParticles(curvePoints);
+}
+
+let pathParticles = null;
+function addPathParticles(points) {
+    if (pathParticles) scene.remove(pathParticles);
+
+    const positions = [];
+    
+    for (let i = 0; i < points.length; i += 3) {
+        positions.push(points[i].x, points[i].y + 2, points[i].z);
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    const mat = new THREE.PointsMaterial({
+        color: 0xc4b5fd,
+        size: 3,
+        sizeAttenuation: true,
+        transparent: true,
+        opacity: 0.7,
+    });
+    pathParticles = new THREE.Points(geo, mat);
+    scene.add(pathParticles);
+}
+
+function drawElevationProfile(path) {
+    const panel = document.getElementById('elevation-panel');
+    panel.classList.add('visible');
+
+    const canvas = document.getElementById('elevation-canvas');
+    const ctx = canvas.getContext('2d');
+
+    canvas.width = canvas.clientWidth * window.devicePixelRatio;
+    canvas.height = canvas.clientHeight * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+    const cw = canvas.clientWidth;
+    const ch = canvas.clientHeight;
+    const pad = { top: 10, bottom: 20, left: 40, right: 16 };
+    const plotW = cw - pad.left - pad.right;
+    const plotH = ch - pad.top - pad.bottom;
+
+    const elevations = path.map(p => p.z);
+    const minElev = Math.min(...elevations);
+    const maxElev = Math.max(...elevations);
+    const elevRange = maxElev - minElev || 1;
+
+    const distances = [0];
+    for (let i = 1; i < path.length; i++) {
+        const dx = path[i].x - path[i-1].x;
+        const dy = path[i].y - path[i-1].y;
+        const dz = path[i].z - path[i-1].z;
+        distances.push(distances[i-1] + Math.sqrt(dx*dx + dy*dy + dz*dz));
+    }
+    const totalDist = distances[distances.length - 1];
+
+    ctx.clearRect(0, 0, cw, ch);
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+        const y = pad.top + (plotH / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(pad.left, y);
+        ctx.lineTo(pad.left + plotW, y);
+        ctx.stroke();
+    }
+
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.font = '10px JetBrains Mono, monospace';
+    ctx.textAlign = 'right';
+    for (let i = 0; i <= 4; i++) {
+        const y = pad.top + (plotH / 4) * i;
+        const val = maxElev - (elevRange / 4) * i;
+        ctx.fillText(val.toFixed(1), pad.left - 6, y + 3);
+    }
+
+    const gradient = ctx.createLinearGradient(0, pad.top, 0, pad.top + plotH);
+    gradient.addColorStop(0, 'rgba(167, 139, 250, 0.3)');
+    gradient.addColorStop(1, 'rgba(167, 139, 250, 0.02)');
+
+    ctx.beginPath();
+    ctx.moveTo(pad.left, pad.top + plotH);
+    for (let i = 0; i < path.length; i++) {
+        const x = pad.left + (distances[i] / totalDist) * plotW;
+        const y = pad.top + plotH - ((elevations[i] - minElev) / elevRange) * plotH;
+        ctx.lineTo(x, y);
+    }
+    ctx.lineTo(pad.left + plotW, pad.top + plotH);
+    ctx.closePath();
+    ctx.fillStyle = gradient;
+    ctx.fill();
+
+    ctx.beginPath();
+    for (let i = 0; i < path.length; i++) {
+        const x = pad.left + (distances[i] / totalDist) * plotW;
+        const y = pad.top + plotH - ((elevations[i] - minElev) / elevRange) * plotH;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = '#a78bfa';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.fillStyle = '#34d399';
+    ctx.beginPath();
+    ctx.arc(pad.left, pad.top + plotH - ((elevations[0] - minElev) / elevRange) * plotH, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#f87171';
+    ctx.beginPath();
+    const lastX = pad.left + plotW;
+    const lastY = pad.top + plotH - ((elevations[elevations.length-1] - minElev) / elevRange) * plotH;
+    ctx.arc(lastX, lastY, 4, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function showStats(result) {
+    document.getElementById('stats-section').style.display = 'block';
+    document.getElementById('stat-distance').textContent = result.distance.toFixed(1);
+    document.getElementById('stat-maxslope').textContent = result.maxSlope.toFixed(1) + '°';
+    document.getElementById('stat-elevation').textContent = result.elevGain.toFixed(1);
+    document.getElementById('stat-steps').textContent = result.steps.toLocaleString();
+}
+
+function resetPoints() {
+    startPoint = null;
+    endPoint = null;
+    selectingStart = true;
+
+    if (startMarker) { scene.remove(startMarker); startMarker = null; }
+    if (endMarker) { scene.remove(endMarker); endMarker = null; }
+    if (pathLine) { scene.remove(pathLine); pathLine = null; }
+    if (pathGlow) { scene.remove(pathGlow); pathGlow = null; }
+    if (pathParticles) { scene.remove(pathParticles); pathParticles = null; }
+
+    document.getElementById('start-display').querySelector('span').textContent = 'Click on terrain to set';
+    document.getElementById('end-display').querySelector('span').textContent = 'Set start point first';
+    document.getElementById('start-display').classList.add('active');
+    document.getElementById('end-display').classList.remove('active');
+    document.getElementById('compute-btn').disabled = true;
+    document.getElementById('stats-section').style.display = 'none';
+    document.getElementById('elevation-panel').classList.remove('visible');
+
+    showMode('Click to place start point');
+}
+
+function toggleWireframe() {
+    const toggle = document.getElementById('wireframe-toggle');
+    toggle.classList.toggle('active');
+    if (wireframeMesh) wireframeMesh.visible = toggle.classList.contains('active');
+}
+
+function setStatus(type, text) {
+    const el = document.getElementById('status');
+    el.className = 'status ' + type;
+    el.textContent = text;
+}
+
+function showMode(text) {
+    const el = document.getElementById('mode-indicator');
+    document.getElementById('mode-text').textContent = text;
+    el.classList.add('visible');
+}
+
+function hideMode() {
+    document.getElementById('mode-indicator').classList.remove('visible');
+}
+
+function onResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+
+    const t = Date.now() * 0.002;
+    if (startMarker) {
+        startMarker.children[0].position.y = 8 + Math.sin(t) * 1.5;
+        startMarker.children[1].position.y = 8 + Math.sin(t) * 1.5;
+    }
+    if (endMarker) {
+        endMarker.children[0].position.y = 8 + Math.sin(t + Math.PI) * 1.5;
+        endMarker.children[1].position.y = 8 + Math.sin(t + Math.PI) * 1.5;
+    }
+
+    if (pathParticles) {
+        pathParticles.material.opacity = 0.4 + Math.sin(t * 2) * 0.3;
+    }
+
+    renderer.render(scene, camera);
+}
+
+init();
+</script>
+</body>
+</html>

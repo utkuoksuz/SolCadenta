@@ -1,0 +1,47 @@
+{
+  "name": "Square Patrol",
+  "description": "Navigate in a simple square pattern",
+  "terrain_notes": "Flat open area",
+  "steps": [
+    {
+      "action": "F 150",
+      "description": "Drive forward along the first side",
+      "max_attempts": 5
+    },
+    {
+      "action": "R 600",
+      "description": "Turn right 90 degrees",
+      "max_attempts": 5
+    },
+    {
+      "action": "F 150",
+      "description": "Drive forward along the second side",
+      "max_attempts": 5
+    },
+    {
+      "action": "R 600",
+      "description": "Turn right 90 degrees",
+      "max_attempts": 5
+    },
+    {
+      "action": "F 150",
+      "description": "Drive forward along the third side",
+      "max_attempts": 5
+    },
+    {
+      "action": "R 600",
+      "description": "Turn right 90 degrees",
+      "max_attempts": 5
+    },
+    {
+      "action": "F 150",
+      "description": "Drive forward along the fourth side",
+      "max_attempts": 5
+    },
+    {
+      "action": "R 600",
+      "description": "Turn right 90 degrees to face the original direction",
+      "max_attempts": 5
+    }
+  ]
+}

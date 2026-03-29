@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AHIEN-14 Lunar Rover — Mission Control</title>
+<meta name="description" content="Real-time mission control dashboard for the AHIEN-14 lunar rover prototype">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#060a14;--bg2:#0c1225;
+  --card:rgba(10,16,38,0.72);--card-border:rgba(0,212,255,0.07);
+  --cyan:#00d4ff;--purple:#7c6bff;--green:#00e87b;
+  --amber:#ffb347;--red:#ff4d6a;
+  --text:#e0e8f5;--text2:#7a8aaa;--text3:#3a4a68;
+}
+html{font-size:14px}
+body{
+  font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);
+  min-height:100vh;overflow-x:hidden;
+}
+
+body::before,body::after{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+}
+body::before{
+  background:
+    radial-gradient(ellipse at 20% 50%,rgba(124,107,255,0.06),transparent 60%),
+    radial-gradient(ellipse at 80% 20%,rgba(0,212,255,0.04),transparent 50%),
+    radial-gradient(ellipse at 50% 80%,rgba(0,232,123,0.03),transparent 50%);
+}
+
+.app{position:relative;z-index:1;display:flex;flex-direction:column;min-height:100vh}
+header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 24px;
+  background:rgba(6,10,20,0.85);backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--card-border);
+}
+.logo{display:flex;align-items:center;gap:12px}
+.logo-icon{font-size:1.6rem}
+.logo h1{font-size:1.1rem;font-weight:700;letter-spacing:.5px}
+.logo h1 span{color:var(--cyan);font-weight:800}
+.header-status{display:flex;align-items:center;gap:16px;font-size:.85rem;color:var(--text2)}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 8px var(--green);animation:pulse 2s infinite}
+.status-dot.inactive{background:var(--red);box-shadow:0 0 8px var(--red)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+.main{display:grid;grid-template-columns:1fr 380px;grid-template-rows:auto auto;
+  gap:16px;padding:16px 24px;flex:1}
+
+.card{
+  background:var(--card);backdrop-filter:blur(16px);
+  border:1px solid var(--card-border);border-radius:14px;
+  overflow:hidden;
+}
+.card-header{
+  padding:12px 16px;border-bottom:1px solid var(--card-border);
+  display:flex;align-items:center;gap:8px;
+  font-weight:600;font-size:.82rem;text-transform:uppercase;
+  letter-spacing:1.2px;color:var(--text2);
+}
+.card-header .dot{width:6px;height:6px;border-radius:50%;background:var(--cyan)}
+.card-body{padding:16px}
+
+.video-section{grid-column:1;grid-row:1}
+.video-wrap{position:relative;width:100%;aspect-ratio:4/3;background:#000;border-radius:8px;overflow:hidden}
+.video-wrap img{width:100%;height:100%;object-fit:contain}
+.video-overlay{
+  position:absolute;bottom:0;left:0;right:0;
+  padding:8px 12px;
+  background:linear-gradient(transparent,rgba(0,0,0,.7));
+  font-size:.75rem;color:var(--text2);display:flex;justify-content:space-between;
+}
+.no-signal{
+  display:flex;align-items:center;justify-content:center;
+  width:100%;height:100%;color:var(--text3);font-size:1.1rem;letter-spacing:2px;
+}
+
+.route-section{grid-column:1;grid-row:2}
+.route-canvas-wrap{position:relative;width:100%;height:320px;background:rgba(0,0,0,0.3);border-radius:8px;overflow:hidden}
+#routeCanvas{width:100%;height:100%}
+
+.mission-section{grid-column:2;grid-row:1/3;display:flex;flex-direction:column}
+.mission-section .card-body{flex:1;display:flex;flex-direction:column;gap:0;overflow:hidden}
+.steps-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:0;padding:4px 0}
+.step-item{
+  display:flex;align-items:flex-start;gap:12px;padding:10px 8px;
+  border-radius:8px;transition:background .2s;
+}
+.step-item:hover{background:rgba(0,212,255,0.04)}
+.step-marker{
+  display:flex;flex-direction:column;align-items:center;gap:0;flex-shrink:0;padding-top:2px;
+}
+.step-dot{
+  width:18px;height:18px;border-radius:50%;border:2px solid var(--text3);
+  display:flex;align-items:center;justify-content:center;font-size:.6rem;
+  transition:all .3s;
+}
+.step-dot.completed{border-color:var(--green);background:var(--green);color:#000}
+.step-dot.current{border-color:var(--cyan);box-shadow:0 0 12px rgba(0,212,255,.4);animation:pulse 1.5s infinite}
+.step-line{width:2px;flex:1;min-height:16px;background:var(--text3);opacity:.3}
+.step-info{flex:1;min-width:0}
+.step-action{font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--cyan);margin-bottom:2px}
+.step-desc{font-size:.8rem;color:var(--text2);line-height:1.4}
+.step-attempts{font-size:.7rem;color:var(--amber);margin-top:2px}
+.step-item.completed-item .step-desc{color:var(--text3);text-decoration:line-through}
+.step-item.completed-item .step-action{color:var(--text3)}
+
+.metrics-grid{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px;
+}
+.metric-card{
+  text-align:center;padding:12px 6px;border-radius:10px;
+  background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.04);
+}
+.metric-val{font-size:1.5rem;font-weight:800;line-height:1}
+.metric-val.cyan{color:var(--cyan)}
+.metric-val.green{color:var(--green)}
+.metric-val.amber{color:var(--amber)}
+.metric-val.purple{color:var(--purple)}
+.metric-label{font-size:.62rem;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-top:4px}
+
+.log-section{margin-top:auto}
+.log-wrap{
+  max-height:180px;overflow-y:auto;
+  font-family:'JetBrains Mono',monospace;font-size:.72rem;
+  background:rgba(0,0,0,0.3);border-radius:8px;padding:8px 10px;
+}
+.log-entry{padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.03);display:flex;gap:8px}
+.log-time{color:var(--text3);flex-shrink:0}
+.log-msg{color:var(--text2)}
+.log-msg.cmd{color:var(--green)}
+.log-msg.dev{color:var(--amber)}
+.log-msg.skip{color:var(--red)}
+.log-msg.complete{color:var(--cyan)}
+
+.gallery{padding:0 24px 20px}
+.gallery-title{font-size:.8rem;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding-left:4px}
+.gallery-strip{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px}
+.gallery-strip::-webkit-scrollbar{height:4px}
+.gallery-strip::-webkit-scrollbar-track{background:transparent}
+.gallery-strip::-webkit-scrollbar-thumb{background:var(--text3);border-radius:2px}
+.frame-thumb{
+  flex-shrink:0;width:120px;height:90px;border-radius:6px;overflow:hidden;
+  border:1px solid var(--card-border);cursor:pointer;
+  transition:transform .2s,box-shadow .2s;position:relative;
+}
+.frame-thumb:hover{transform:scale(1.08);box-shadow:0 0 16px rgba(0,212,255,.2)}
+.frame-thumb img{width:100%;height:100%;object-fit:cover}
+.frame-thumb .frame-label{
+  position:absolute;bottom:0;left:0;right:0;padding:2px 6px;
+  background:rgba(0,0,0,.7);font-size:.6rem;color:var(--text2);
+}
+
+.complete-banner{
+  display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:100;
+  background:rgba(6,10,20,0.88);backdrop-filter:blur(10px);
+  align-items:center;justify-content:center;flex-direction:column;gap:16px;
+}
+.complete-banner.show{display:flex}
+.complete-banner h2{font-size:2rem;color:var(--green);font-weight:800;letter-spacing:2px}
+.complete-banner p{color:var(--text2);font-size:1rem}
+.complete-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px}
+.complete-stat{text-align:center;padding:16px;background:var(--card);border-radius:12px;border:1px solid var(--card-border)}
+.complete-stat .val{font-size:1.8rem;font-weight:800;color:var(--cyan)}
+.complete-stat .lbl{font-size:.7rem;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-top:4px}
+.complete-close{
+  position:absolute;top:20px;right:24px;background:none;border:1px solid rgba(255,255,255,0.15);
+  color:var(--text2);width:36px;height:36px;border-radius:50%;cursor:pointer;
+  font-size:1.1rem;display:flex;align-items:center;justify-content:center;
+  transition:all .2s;
+}
+.complete-close:hover{background:rgba(255,255,255,0.08);color:var(--text)}
+
+.terrain-section{padding:0 24px 20px}
+.terrain-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.terrain-header .gallery-title{margin-bottom:0}
+.terrain-btn{
+  background:rgba(124,107,255,0.1);border:1px solid rgba(124,107,255,0.2);
+  color:var(--purple);padding:6px 14px;border-radius:8px;cursor:pointer;
+  font-family:'Outfit',sans-serif;font-size:.78rem;font-weight:500;transition:all .2s;
+}
+.terrain-btn:hover{background:rgba(124,107,255,0.2)}
+.terrain-wrap{
+  max-height:400px;overflow-y:auto;border-radius:8px;background:rgba(0,0,0,0.3);
+  border:1px solid var(--card-border);display:none;
+}
+.terrain-wrap.visible{display:block}
+.terrain-wrap img{width:100%;display:block}
+.terrain-empty{padding:24px;text-align:center;color:var(--text3);font-size:.85rem}
+
+.progress-bar{height:3px;background:rgba(255,255,255,0.05);border-radius:2px;margin-top:8px;overflow:hidden}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--cyan),var(--purple));border-radius:2px;transition:width .5s ease}
+
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--text3);border-radius:2px}
+
+.header-env{display:flex;align-items:center;gap:14px;font-size:.85rem;color:var(--text2)}
+.header-env span{display:flex;align-items:center;gap:4px}
+.env-val{font-weight:600;color:var(--text)}
+.translate-btn{
+  background:rgba(0,212,255,0.08);border:1px solid rgba(0,212,255,0.15);
+  color:var(--cyan);padding:6px 14px;border-radius:8px;cursor:pointer;
+  font-family:'Outfit',sans-serif;font-size:.8rem;font-weight:500;
+  transition:all .2s;letter-spacing:.3px;
+}
+.translate-btn:hover{background:rgba(0,212,255,0.18);border-color:rgba(0,212,255,0.3)}
+.translate-btn:active{transform:scale(0.97)}
+.translate-btn.loading{opacity:.6;pointer-events:none}
+.return-btn{
+  background:rgba(255,77,106,0.1);border:1px solid rgba(255,77,106,0.2);
+  color:var(--red);padding:6px 14px;border-radius:8px;cursor:pointer;
+  font-family:'Outfit',sans-serif;font-size:.8rem;font-weight:500;
+  transition:all .2s;letter-spacing:.3px;
+}
+.return-btn:hover{background:rgba(255,77,106,0.2);border-color:rgba(255,77,106,0.35)}
+.return-btn:active{transform:scale(0.97)}
+.return-btn.active{background:rgba(255,179,71,0.15);border-color:rgba(255,179,71,0.3);color:var(--amber)}
+.log-msg.ret{color:#ff8fa0}
+
+@media(max-width:900px){
+  .main{grid-template-columns:1fr;grid-template-rows:auto auto auto}
+  .mission-section{grid-column:1;grid-row:3}
+  header{flex-wrap:wrap;gap:8px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  
+  <header>
+    <div class="logo">
+      <span class="logo-icon">🌙</span>
+      <h1><span>AHIEN-14</span> LUNAR ROVER</h1>
+    </div>
+    <div class="header-env">
+      <span>🌡️ <span class="env-val" id="envTemp">--</span>°C</span>
+      <span>💧 <span class="env-val" id="envHum">--</span>%</span>
+    </div>
+    <div class="header-status">
+      <span id="missionName">—</span>
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusLabel">CONNECTING</span>
+      <span id="clock"></span>
+      <a href="/optimizer" style="text-decoration:none;">
+        <button class="translate-btn" style="background:rgba(96,165,250,0.1); border-color:rgba(96,165,250,0.2); color:#60a5fa;">🌐 Route Optimizer</button>
+      </a>
+      <button class="return-btn" id="startBtn" onclick="startMission()" style="background:rgba(0,232,123,0.1); border-color:rgba(0,232,123,0.2); color:var(--green);">▶ Start</button>
+      <button class="translate-btn" id="translateBtn" onclick="toggleLang()">🇹🇷 Türkçe</button>
+      <button class="return-btn" id="returnBtn" onclick="toggleReturn()">🏠 Return</button>
+    </div>
+  </header>
+
+  <div class="main">
+    
+    <div class="card video-section">
+      <div class="card-header"><span class="dot"></span>LIVE CAMERA FEED</div>
+      <div class="card-body">
+        <div class="video-wrap">
+          <img id="videoFeed" src="/video_feed" alt="Rover Camera">
+          <div class="video-overlay">
+            <span id="distLabel">DIST: — cm</span>
+            <span id="evalLabel">AI EVAL: 1.5s</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card route-section">
+      <div class="card-header"><span class="dot"></span>ROUTE MAP — DEAD RECKONING</div>
+      <div class="card-body">
+        <div class="route-canvas-wrap">
+          <canvas id="routeCanvas"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mission-section">
+      <div class="card-header"><span class="dot"></span>MISSION CONTROL</div>
+      <div class="card-body">
+        
+        <div class="metrics-grid">
+          <div class="metric-card"><div class="metric-val cyan" id="metTime">0s</div><div class="metric-label">Time</div></div>
+          <div class="metric-card"><div class="metric-val green" id="metCmds">0</div><div class="metric-label">Commands</div></div>
+          <div class="metric-card"><div class="metric-val amber" id="metDevs">0</div><div class="metric-label">Deviations</div></div>
+          <div class="metric-card"><div class="metric-val purple" id="metEff">0%</div><div class="metric-label">Efficiency</div></div>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+
+        <div class="steps-list" id="stepsList"></div>
+
+        <div class="log-section">
+          <div class="card-header" style="padding:8px 0;border:none"><span class="dot"></span>AI DECISIONS</div>
+          <div class="log-wrap" id="logWrap"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="gallery">
+    <div class="gallery-title">📸 Captured Frames</div>
+    <div class="gallery-strip" id="galleryStrip">
+      <div style="color:var(--text3);font-size:.8rem;padding:30px 0">Frames will appear as the rover navigates...</div>
+    </div>
+  </div>
+
+  <div class="terrain-section">
+    <div class="terrain-header">
+      <div class="gallery-title">🗺️ Terrain Map</div>
+      <button class="terrain-btn" id="terrainBtn" onclick="loadTerrainMap()">Generate Terrain Map</button>
+    </div>
+    <div class="terrain-wrap" id="terrainWrap">
+      <div class="terrain-empty" id="terrainEmpty">Click "Generate" to stitch ground frames into a terrain strip</div>
+    </div>
+  </div>
+</div>
+
+<div class="complete-banner" id="completeBanner">
+  <button class="complete-close" onclick="document.getElementById('completeBanner').classList.remove('show')">✕</button>
+  <h2>🏁 MISSION COMPLETE</h2>
+  <p>All mission steps have been processed. Click anywhere or ✕ to close.</p>
+  <div class="complete-stats">
+    <div class="complete-stat"><div class="val" id="cTime">—</div><div class="lbl">Total Time</div></div>
+    <div class="complete-stat"><div class="val" id="cCmds">—</div><div class="lbl">Commands</div></div>
+    <div class="complete-stat"><div class="val" id="cEff">—</div><div class="lbl">Efficiency</div></div>
+  </div>
+  <div class="complete-stats" style="margin-top:0">
+    <div class="complete-stat"><div class="val" id="cDone">—</div><div class="lbl">Completed</div></div>
+    <div class="complete-stat"><div class="val" id="cSkip">—</div><div class="lbl">Skipped</div></div>
+    <div class="complete-stat"><div class="val" id="cDevs">—</div><div class="lbl">Deviations</div></div>
+  </div>
+</div>
+
+<script>
+const POLL_MS = 1000;
+let prevEventCount = 0;
+let prevFrameCount = 0;
+let missionShown = false;
+
+let isTurkish = false;
+let originalDescs = [];
+let translatedDescs = null;
+const TR = {
+  'LIVE CAMERA FEED':'CANLI KAMERA','ROUTE MAP — DEAD RECKONING':'ROTA HARİTASI — KONUM TAHMİNİ',
+  'MISSION CONTROL':'GÖREV KONTROL','AI DECISIONS':'YAPAY ZEKA KARARLARI',
+  '📸 Captured Frames':'📸 Yakalanan Kareler',
+  'Time':'Süre','Commands':'Komutlar','Deviations':'Sapmalar','Efficiency':'Verimlilik',
+  'Attempt':'Deneme','CONNECTING':'BAĞLANIYOR','ACTIVE':'AKTİF','COMPLETE':'TAMAMLANDI','OFFLINE':'ÇEVRİMDIŞI',
+  'Step':'Adım','COMPLETED':'TAMAMLANDI','SKIPPED':'ATLANDI','MISSION COMPLETE':'GÖREV TAMAMLANDI',
+  'Total Time':'Toplam Süre','Completed':'Tamamlanan','Skipped':'Atlanan',
+  'WAITING FOR PI':'PI BEKLENİYOR', 'RETURNING':'DÖNÜLÜYOR',
+  '🏠 Return':'🏠 Geri Dön', '⏹ Cancel Return':'⏹ Dönüşü İptal Et',
+  '▶ Start':'▶ Başlat', 'READY':'HAZIR',
+  'Generate Terrain Map':'Arazi Haritası Oluştur', '🔄 Refresh Map':'🔄 Haritayı Yenile', '⏳ Generating...':'⏳ Oluşturuluyor...'
+};
+function t(key){ return isTurkish && TR[key] ? TR[key] : key; }
+
+async function toggleLang(){
+  const btn = document.getElementById('translateBtn');
+  if(isTurkish){
+    isTurkish = false;
+    btn.textContent = '🇹🇷 Türkçe';
+    applyStaticLabels();
+    poll(); 
+    return;
+  }
+  
+  if(!translatedDescs && originalDescs.length > 0){
+    btn.textContent = '⏳ Çevriliyor...';
+    btn.classList.add('loading');
+    try {
+      const r = await fetch('/api/translate',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({texts:originalDescs})
+      });
+      const d = await r.json();
+      if(d.error){
+        throw new Error(d.error);
+      }
+      if(d.translations && d.translations.length > 0){
+        
+        translatedDescs = originalDescs.map((orig, i) =>
+          (d.translations[i] && d.translations[i].trim()) ? d.translations[i].trim() : orig
+        );
+      }
+    } catch(e){
+      console.error('Translation failed:', e);
+      btn.classList.remove('loading');
+      btn.textContent = '❌ Çeviri başarısız';
+      setTimeout(() => { btn.textContent = '🇹🇷 Türkçe'; }, 2000);
+      return; 
+    }
+    btn.classList.remove('loading');
+  }
+  
+  if(!translatedDescs || translatedDescs.length === 0){
+    btn.textContent = '❌ Çeviri bulunamadı';
+    setTimeout(() => { btn.textContent = '🇹🇷 Türkçe'; }, 2000);
+    return;
+  }
+  isTurkish = true;
+  btn.textContent = '🇬🇧 English';
+  applyStaticLabels();
+  poll(); 
+}
+
+function applyStaticLabels(){
+  
+  const headers = document.querySelectorAll('.card-header');
+  const headerMap = {'LIVE CAMERA FEED':0,'ROUTE MAP — DEAD RECKONING':1,'MISSION CONTROL':2,'AI DECISIONS':3};
+  const origKeys = Object.keys(headerMap);
+  headers.forEach(h => {
+    const txt = h.textContent.trim();
+    origKeys.forEach(k => {
+      if(txt === k || txt === TR[k]) h.innerHTML = '<span class="dot"></span>' + t(k);
+    });
+  });
+  
+  const retBtn = document.getElementById('returnBtn');
+  if(retBtn) {
+    if(retBtn.textContent === '🏠 Return' || retBtn.textContent === '🏠 Geri Dön') retBtn.textContent = t('🏠 Return');
+    if(retBtn.textContent === '⏹ Cancel Return' || retBtn.textContent === '⏹ Dönüşü İptal Et') retBtn.textContent = t('⏹ Cancel Return');
+  }
+  const terBtn = document.getElementById('terrainBtn');
+  if(terBtn) {
+    if(terBtn.textContent === 'Generate Terrain Map' || terBtn.textContent === 'Arazi Haritası Oluştur') terBtn.textContent = t('Generate Terrain Map');
+    if(terBtn.textContent === '🔄 Refresh Map' || terBtn.textContent === '🔄 Haritayı Yenile') terBtn.textContent = t('🔄 Refresh Map');
+  }
+  const startBtn = document.getElementById('startBtn');
+  if(startBtn) {
+    if(startBtn.textContent === '▶ Start' || startBtn.textContent === '▶ Başlat') startBtn.textContent = t('▶ Start');
+  }
+  
+  ['Time','Commands','Deviations','Efficiency'].forEach(k => {
+    const els = document.querySelectorAll('.metric-label');
+    els.forEach(el => { if(el.textContent.trim()===k||el.textContent.trim()===TR[k]) el.textContent = t(k); });
+  });
+  
+  const gt = document.querySelector('.gallery-title');
+  if(gt) gt.textContent = t('📸 Captured Frames');
+  
+  document.querySelectorAll('.complete-stat .lbl').forEach(el => {
+    ['Total Time','Commands','Efficiency','Completed','Skipped','Deviations'].forEach(k => {
+      if(el.textContent.trim()===k||el.textContent.trim()===TR[k]) el.textContent = t(k);
+    });
+  });
+}
+
+async function toggleReturn(){
+  const btn = document.getElementById('returnBtn');
+  if(btn.dataset.returning === 'true'){
+    
+    await fetch('/api/return/cancel',{method:'POST'});
+    btn.dataset.returning = 'false';
+    btn.textContent = t('🏠 Return');
+    btn.className = 'return-btn';
+  } else {
+    
+    btn.textContent = '⏳...';
+    try {
+      const r = await fetch('/api/return',{method:'POST'});
+      const d = await r.json();
+      if(d.error){
+        btn.textContent = '❌ ' + d.error;
+        setTimeout(()=>{ btn.textContent = t('🏠 Return'); }, 2000);
+        return;
+      }
+      btn.dataset.returning = 'true';
+      btn.textContent = t('⏹ Cancel Return');
+      btn.className = 'return-btn active';
+    } catch(e){
+      btn.textContent = '❌ Error';
+      setTimeout(()=>{ btn.textContent = t('🏠 Return'); }, 2000);
+    }
+  }
+}
+
+function updateReturnBtn(d){
+  const btn = document.getElementById('returnBtn');
+  if(d.returning){
+    btn.dataset.returning = 'true';
+    btn.textContent = t('⏹ Cancel Return');
+    btn.className = 'return-btn active';
+  } else if(btn.dataset.returning === 'true'){
+    
+    btn.dataset.returning = 'false';
+    btn.textContent = t('🏠 Return');
+    btn.className = 'return-btn';
+  }
+}
+
+async function startMission() {
+  const btn = document.getElementById('startBtn');
+  if(btn) btn.textContent = '⏳...';
+  try {
+    await fetch('/api/start', {method: 'POST'});
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+setInterval(() => {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+}, 1000);
+
+async function poll() {
+  try {
+    const r = await fetch('/api/state');
+    const d = await r.json();
+    updateMetrics(d.metrics);
+    updateSteps(d.mission);
+    updateLog(d.events);
+    updateRoute(d.route);
+    updateGallery(d.route);
+    updateHeader(d);
+    updateReturnBtn(d);
+  } catch(e) {
+    document.getElementById('statusDot').className = 'status-dot inactive';
+    document.getElementById('statusLabel').textContent = 'OFFLINE';
+  }
+}
+
+function updateHeader(d) {
+  const dot = document.getElementById('statusDot');
+  const label = document.getElementById('statusLabel');
+  const name = document.getElementById('missionName');
+  const startBtn = document.getElementById('startBtn');
+  
+  if (startBtn) {
+    startBtn.style.display = d.started ? 'none' : 'inline-block';
+  }
+
+  if (d.mission) {
+    name.textContent = d.mission.name || '';
+    if (d.mission.completed) {
+      dot.className = 'status-dot';
+      dot.style.background = 'var(--amber)';
+      dot.style.boxShadow = '0 0 8px var(--amber)';
+      label.textContent = t('COMPLETE');
+      if (!missionShown) { showComplete(d.metrics); missionShown = true; }
+    } else if (d.returning) {
+      dot.className = 'status-dot';
+      dot.style.background = 'var(--red)';
+      dot.style.boxShadow = '0 0 8px var(--red)';
+      label.textContent = t('RETURNING');
+    } else if (!d.pi_connected) {
+      dot.className = 'status-dot inactive';
+      dot.style.background = '';
+      dot.style.boxShadow = '';
+      label.textContent = t('WAITING FOR PI');
+    } else if (!d.started) {
+      dot.className = 'status-dot';
+      dot.style.background = 'var(--purple)';
+      dot.style.boxShadow = '0 0 8px var(--purple)';
+      label.textContent = t('READY');
+    } else {
+      dot.className = 'status-dot';
+      dot.style.background = '';
+      dot.style.boxShadow = '';
+      label.textContent = t('ACTIVE');
+    }
+  }
+  document.getElementById('distLabel').textContent = 'DIST: ' + (d.distance||'—') + ' cm';
+  
+  if(d.env){
+    document.getElementById('envTemp').textContent = d.env.temp || '--';
+    document.getElementById('envHum').textContent = d.env.hum || '--';
+  }
+}
+
+function updateMetrics(m) {
+  if (!m) return;
+  document.getElementById('metTime').textContent = m.elapsed_time + 's';
+  document.getElementById('metCmds').textContent = m.total_commands;
+  document.getElementById('metDevs').textContent = m.deviations;
+  document.getElementById('metEff').textContent = m.path_efficiency + '%';
+}
+
+function updateSteps(mission) {
+  if (!mission || !mission.steps) return;
+  const el = document.getElementById('stepsList');
+  const total = mission.total_steps;
+  const done = mission.steps.filter(s => s.status === 'completed').length;
+  document.getElementById('progressFill').style.width = ((done / total) * 100) + '%';
+
+  if(originalDescs.length === 0){
+    originalDescs = mission.steps.map(s => s.description);
+  }
+
+  let html = '';
+  mission.steps.forEach((s, i) => {
+    const isCur = s.status === 'current';
+    const isDone = s.status === 'completed';
+    const cls = isDone ? 'completed-item' : isCur ? 'current-item' : '';
+    const dotCls = isDone ? 'completed' : isCur ? 'current' : '';
+    const icon = isDone ? '✓' : isCur ? '▶' : (i + 1);
+    const showLine = i < mission.steps.length - 1;
+    
+    const desc = (isTurkish && translatedDescs && translatedDescs[i]) ? translatedDescs[i] : s.description;
+    html += '<div class="step-item ' + cls + '">';
+    html += '<div class="step-marker"><div class="step-dot ' + dotCls + '">' + icon + '</div>';
+    if (showLine) html += '<div class="step-line"></div>';
+    html += '</div>';
+    html += '<div class="step-info">';
+    html += '<div class="step-action">' + s.action + '</div>';
+    html += '<div class="step-desc">' + desc + '</div>';
+    if (isCur) html += '<div class="step-attempts">' + t('Attempt') + ' ' + s.attempts + ' / ' + s.max_attempts + '</div>';
+    html += '</div></div>';
+  });
+  el.innerHTML = html;
+}
+
+function updateLog(events) {
+  if (!events || events.length === prevEventCount) return;
+  prevEventCount = events.length;
+  const el = document.getElementById('logWrap');
+  let html = '';
+  events.forEach(e => {
+    let cls = '', msg = '';
+    if (e.type === 'command') {
+      cls = 'cmd'; msg = 'Step ' + e.step + ' | ' + e.planned + ' → ' + e.sent + ' ✓';
+    } else if (e.type === 'deviation') {
+      cls = 'dev'; msg = 'Step ' + e.step + ' | ' + e.planned + ' → ' + e.sent + ' ⚠ deviation';
+    } else if (e.type === 'step_complete') {
+      cls = 'complete'; msg = 'Step ' + e.step + ' COMPLETED ►';
+    } else if (e.type === 'step_skip') {
+      cls = 'skip'; msg = 'Step ' + e.step + ' SKIPPED ✕' + (e.reason ? ' (' + e.reason + ')' : '');
+    } else if (e.type === 'mission_complete') {
+      cls = 'complete'; msg = '🏁 MISSION COMPLETE';
+    } else if (e.type === 'system') {
+      cls = ''; msg = '⚙ ' + (e.message || '');
+    } else if (e.type === 'error') {
+      cls = 'skip'; msg = '✕ ' + (e.message || 'Error');
+    } else if (e.type === 'return') {
+      cls = 'ret'; msg = '↩ Return [' + e.step + '/' + e.total + '] ' + e.original + ' → ' + e.reversed;
+    }
+    html += '<div class="log-entry"><span class="log-time">' + e.timestamp + '</span><span class="log-msg ' + cls + '">' + msg + '</span></div>';
+  });
+  el.innerHTML = html;
+  el.scrollTop = el.scrollHeight;
+}
+
+function updateGallery(route) {
+  if (!route) return;
+  const frames = route.filter(p => p.frame);
+  if (frames.length === prevFrameCount) return;
+  prevFrameCount = frames.length;
+  const el = document.getElementById('galleryStrip');
+  if (frames.length === 0) return;
+  let html = '';
+  frames.forEach((f, i) => {
+    html += '<div class="frame-thumb">';
+    html += '<img src="/frames/' + f.frame + '" alt="Frame ' + (i+1) + '" loading="lazy">';
+    html += '<div class="frame-label">#' + (i+1) + ' ' + f.command + '</div>';
+    html += '</div>';
+  });
+  el.innerHTML = html;
+  el.scrollLeft = el.scrollWidth;
+}
+
+function updateRoute(points) {
+  if (!points || points.length < 1) return;
+  const canvas = document.getElementById('routeCanvas');
+  const wrap = canvas.parentElement;
+  canvas.width = wrap.clientWidth;
+  canvas.height = wrap.clientHeight;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  ctx.strokeStyle = 'rgba(0,212,255,0.04)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for (let y = 0; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  points.forEach(p=>{minX=Math.min(minX,p.x);maxX=Math.max(maxX,p.x);minY=Math.min(minY,p.y);maxY=Math.max(maxY,p.y)});
+  const pad=60, rX=Math.max(maxX-minX,20), rY=Math.max(maxY-minY,20);
+  const sc=Math.min((W-2*pad)/rX,(H-2*pad)/rY, 4);
+  const ox=(W-(maxX+minX)*sc)/2, oy=(H-(maxY+minY)*sc)/2;
+  function tx(x){return x*sc+ox}
+  function ty(y){return y*sc+oy}
+
+  if(points.length>1){
+    for(let i=1;i<points.length;i++){
+      const t=i/(points.length-1);
+      const r=Math.round(0+(124-0)*t), g=Math.round(212+(107-212)*t), b=255;
+      ctx.beginPath();
+      ctx.strokeStyle='rgba('+r+','+g+','+b+',0.7)';
+      ctx.lineWidth=2.5;
+      ctx.moveTo(tx(points[i-1].x),ty(points[i-1].y));
+      ctx.lineTo(tx(points[i].x),ty(points[i].y));
+      ctx.stroke();
+    }
+  }
+
+  points.forEach((p,i)=>{
+    const cx=tx(p.x), cy=ty(p.y);
+    const isFirst=i===0, isLast=i===points.length-1;
+    if(isFirst){
+      ctx.beginPath();ctx.arc(cx,cy,6,0,Math.PI*2);ctx.fillStyle='var(--green)';ctx.fill();
+      ctx.fillStyle='#fff';ctx.font='600 9px Outfit';ctx.textAlign='center';ctx.fillText('S',cx,cy+3);
+    } else if(isLast){
+      ctx.beginPath();ctx.arc(cx,cy,7,0,Math.PI*2);
+      ctx.fillStyle='rgba(0,212,255,0.2)';ctx.fill();
+      ctx.strokeStyle='var(--cyan)';ctx.lineWidth=2;ctx.stroke();
+      
+      const a=p.heading*Math.PI/180;
+      ctx.beginPath();ctx.moveTo(cx,cy);
+      ctx.lineTo(cx+Math.sin(a)*14,cy-Math.cos(a)*14);
+      ctx.strokeStyle='var(--cyan)';ctx.lineWidth=2;ctx.stroke();
+      
+      ctx.beginPath();ctx.arc(cx,cy,12,0,Math.PI*2);
+      ctx.strokeStyle='rgba(0,212,255,0.15)';ctx.lineWidth=1;ctx.stroke();
+    } else {
+      ctx.beginPath();ctx.arc(cx,cy,3,0,Math.PI*2);
+      ctx.fillStyle=p.frame?'rgba(0,212,255,0.6)':'rgba(255,255,255,0.25)';ctx.fill();
+    }
+  });
+
+  ctx.fillStyle='rgba(0,212,255,0.3)';ctx.font='500 10px Outfit';ctx.textAlign='left';
+  ctx.fillText('N ↑',10,20);
+  ctx.fillStyle='rgba(255,255,255,0.15)';ctx.font='400 9px JetBrains Mono';
+  ctx.fillText(points.length-1+' moves',10,H-10);
+}
+
+function showComplete(m) {
+  const el = document.getElementById('completeBanner');
+  el.classList.add('show');
+  document.getElementById('cTime').textContent = m.elapsed_time + 's';
+  document.getElementById('cCmds').textContent = m.total_commands;
+  document.getElementById('cEff').textContent = m.path_efficiency + '%';
+  document.getElementById('cDone').textContent = m.steps_completed;
+  document.getElementById('cSkip').textContent = m.steps_skipped;
+  document.getElementById('cDevs').textContent = m.deviations;
+  
+  el.addEventListener('click', (e) => {
+    if(e.target === el) el.classList.remove('show');
+  });
+}
+
+async function loadTerrainMap(){
+  const btn = document.getElementById('terrainBtn');
+  const wrap = document.getElementById('terrainWrap');
+  const empty = document.getElementById('terrainEmpty');
+  btn.textContent = t('⏳ Generating...');
+  wrap.classList.add('visible');
+  try {
+    const r = await fetch('/api/terrain_map');
+    if(r.status === 204){
+      empty.textContent = 'No forward-movement frames captured yet.';
+      empty.style.display = 'block';
+      btn.textContent = t('Generate Terrain Map');
+      return;
+    }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    empty.style.display = 'none';
+    
+    let img = wrap.querySelector('img');
+    if(!img){
+      img = document.createElement('img');
+      wrap.appendChild(img);
+    }
+    img.src = url;
+    img.alt = 'Terrain strip from rover ground camera';
+    btn.textContent = t('🔄 Refresh Map');
+  } catch(e){
+    empty.textContent = 'Failed to generate terrain map.';
+    empty.style.display = 'block';
+    btn.textContent = t('Generate Terrain Map');
+  }
+}
+
+setInterval(poll, POLL_MS);
+poll();
+</script>
+</body>
+</html>
